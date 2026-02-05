@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>OK Word AI</title>
+
+    <!-- Office JavaScript API -->
+    <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+
+    <!-- Styles -->
+    <link href="taskpane.css" rel="stylesheet" type="text/css" />
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body class="theme-light">
+    <div id="app-container">
+        <!-- Header / Config -->
+        <header class="app-header">
+            <div class="header-title">
+                <i class="fa-solid fa-sparkles accent-color"></i>
+                <span>OpenClaw Agent</span>
+            </div>
+            <div class="header-actions">
+                <button id="settings-btn" title="Settings"><i class="fa-solid fa-cog"></i></button>
+            </div>
+        </header>
+
+        <!-- Settings Panel (Hidden by default) -->
+        <div id="settings-panel" class="settings-panel hidden">
+            <div class="input-group">
+                <label>Gateway Token</label>
+                <input type="password" id="token-input" placeholder="test-token" />
+            </div>
+            <div class="input-group">
+                <label>OpenAI API Key</label>
+                <input type="password" id="api-key-input" placeholder="sk-..." />
+            </div>
+            <div class="input-group">
+                <label>DashScope API Key (Qwen)</label>
+                <input type="password" id="qwen-api-key-input" placeholder="sk-..." />
+            </div>
+            <!-- Model setting removed from here as requested -->
+            <button id="save-settings-btn" class="save-btn">Save to OpenClaw</button>
+        </div>
+
+        <!-- Chat History -->
+        <div id="chat-history" class="chat-history">
+            <div class="message system-message">
+                <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+                <div class="content">
+                    Ready to help you edit your document. Select some text and tell me what to do.
+                </div>
+            </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="input-area">
+            <div id="selection-indicator" class="selection-indicator hidden">
+                <i class="fa-solid fa-quote-right"></i>
+                <span id="selected-text-preview">No selection</span>
+                <button id="clear-selection-btn"><i class="fa-solid fa-times"></i></button>
+            </div>
+
+            <div class="cursor-input-container">
+                <textarea id="prompt-input" rows="1" placeholder="Ask AI to edit..."></textarea>
+
+                <div class="input-controls">
+                    <div class="controls-left">
+                        <button class="icon-btn secondary-icon"><i class="fa-solid fa-plus"></i></button>
+                        <div id="model-selector-btn" class="model-pill active">
+                            <i class="fa-solid fa-bolt"></i>
+                            <span id="current-model-name">Gemini Pro</span>
+                            <i class="fa-solid fa-chevron-down" style="font-size: 8px; margin-left: 4px;"></i>
+                        </div>
+                        <!-- Hidden Model Menu -->
+                        <div id="model-menu" class="model-menu hidden">
+                            <div class="menu-item" data-model="google/gemini-pro">Gemini 3 Pro (High)</div>
+                            <div class="menu-item" data-model="google/gemini-flash">Gemini 3 Flash</div>
+                            <div class="menu-item" data-model="anthropic/claude-3-5-sonnet">Claude 3.5 Sonnet</div>
+                            <div class="menu-item" data-model="openai/gpt-4o">GPT-4o</div>
+                            <div class="menu-item" data-model="qwen-plus">Qwen Plus</div>
+                        </div>
+                    </div>
+                    <div class="controls-right">
+                        <button class="icon-btn secondary-icon"><i class="fa-solid fa-microphone"></i></button>
+                        <button id="send-btn" disabled>
+                            <i class="fa-solid fa-arrow-up"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

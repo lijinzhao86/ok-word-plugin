@@ -1,0 +1,5 @@
+﻿src/gateway/server-http.ts:34:10: Identifier 'ErrorCodes' is imported but never used. [Error/eslint(no-unused-vars)]
+src/gateway/server-http.ts:34:22: Identifier 'errorShape' is imported but never used. [Error/eslint(no-unused-vars)]
+src/gateway/server-http.ts:325:67: 'rpcId ?? ""' will use Object's default stringification format ('[object Object]') when stringified. [Error/typescript-eslint(no-base-to-string)]
+
+3 problems
