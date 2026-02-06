@@ -8,6 +8,7 @@
     <title>OK Word AI</title>
 
     <!-- Office JavaScript API -->
+    <!-- Office JavaScript API -->
     <script type="text/javascript" src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
 
     <!-- Styles -->
@@ -25,6 +26,8 @@
                 <span>OpenClaw Agent</span>
             </div>
             <div class="header-actions">
+                <button id="new-chat-btn" title="Start a new conversation" disabled><i
+                        class="fa-solid fa-plus"></i></button>
                 <button id="settings-btn" title="Settings"><i class="fa-solid fa-cog"></i></button>
             </div>
         </header>
@@ -70,7 +73,8 @@
 
                 <div class="input-controls">
                     <div class="controls-left">
-                        <button class="icon-btn secondary-icon"><i class="fa-solid fa-plus"></i></button>
+                        <button id="new-chat-btn" class="icon-btn secondary-icon"><i
+                                class="fa-solid fa-plus"></i></button>
                         <div id="model-selector-btn" class="model-pill active">
                             <i class="fa-solid fa-bolt"></i>
                             <span id="current-model-name">Gemini Pro</span>
@@ -86,7 +90,6 @@
                         </div>
                     </div>
                     <div class="controls-right">
-                        <button class="icon-btn secondary-icon"><i class="fa-solid fa-microphone"></i></button>
                         <button id="send-btn" disabled>
                             <i class="fa-solid fa-arrow-up"></i>
                         </button>

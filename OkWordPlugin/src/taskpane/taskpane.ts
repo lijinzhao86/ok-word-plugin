@@ -4,7 +4,9 @@
 import { AIService } from "./ai-service";
 import { getGranularDiff } from "./diff-service";
 import { handleToolEvent } from "./tool-renderer";
+import { executeClientTool } from "./tools/word-implementation";
 import TurndownService from "turndown";
+import { marked } from "marked";
 
 const turndownService = new TurndownService();
 let aiService: AIService | null = null;
@@ -28,6 +30,7 @@ let modelSelectorBtn: HTMLElement;
 let modelMenu: HTMLElement;
 let currentModelName: HTMLElement;
 let selectedModelId = "google/gemini-pro";
+let lastUserPrompt = "";
 
 Office.onReady((info) => {
   if (info.host === Office.HostType.Word) {
@@ -117,6 +120,7 @@ function registerEventHandlers() {
     tokenInput.addEventListener("change", () => {
       localStorage.setItem("openclaw_token", tokenInput.value);
       if (tokenInput.value) {
+        if (aiService) aiService.close();
         aiService = new AIService(tokenInput.value);
       }
     });
@@ -153,6 +157,100 @@ function registerEventHandlers() {
       selectionIndicator.classList.add("hidden");
     };
   }
+
+  // New Chat Button Handler
+  const newChatBtn = document.getElementById("new-chat-btn") as HTMLButtonElement;
+  if (newChatBtn) {
+    newChatBtn.onclick = () => {
+      if (!aiService || newChatBtn.disabled) return;
+      aiService.startNewSession();
+      chatHistory.innerHTML = `
+            <div class="message system-message">
+                <div class="avatar"><i class="fa-solid fa-robot"></i></div>
+                <div class="content">
+                    Ready to help you edit your document. Select some text and tell me what to do.
+                </div>
+            </div>`;
+      // Disable button after reset
+      newChatBtn.disabled = true;
+    };
+  }
+}
+
+/**
+ * Checks if the chat has any user interaction and updates the New Chat button state.
+ */
+function updateNewChatButtonState() {
+  const newChatBtn = document.getElementById("new-chat-btn") as HTMLButtonElement;
+  if (!newChatBtn) return;
+
+  // Check if there are any user messages or AI messages (excluding the initial system welcome)
+  // The initial welcome message usually has class 'system-message' and is the only child.
+  const messages = chatHistory.querySelectorAll('.message');
+  let hasInteraction = false;
+
+  if (messages.length > 1) {
+    hasInteraction = true;
+  } else if (messages.length === 1) {
+    // If meant to be strict: only enable if USER has typed something
+    const firstMsg = messages[0];
+    // If the only message is user message (rare), or if it's NOT the default system message
+    if (firstMsg.classList.contains('user-message')) {
+      hasInteraction = true;
+    }
+  }
+
+  newChatBtn.disabled = !hasInteraction;
+
+  // Visual opacity handled by CSS :disabled usually, but ensure icon style correct if needed
+  newChatBtn.style.opacity = hasInteraction ? "1" : "0.5";
+  newChatBtn.style.cursor = hasInteraction ? "pointer" : "default";
+}
+
+async function loadHistory() {
+  if (!aiService) return;
+
+  // Show loading indicator
+  const loaderId = appendMessage("system", "Restoring history...", true);
+
+  try {
+    const history = await aiService.getHistory();
+    // Remove loader
+    removeMessage(loaderId);
+
+    // Clear default welcome message if we have history
+    if (history.length > 0) {
+      chatHistory.innerHTML = "";
+    }
+
+    for (const msg of history) {
+      if (msg.role === "user") {
+        appendMessage("user", msg.content);
+      } else if (msg.role === "assistant") {
+        // Only render text content for now as requested
+        if (msg.content) {
+          const msgId = appendMessage("ai", "");
+          const msgEl = document.getElementById(msgId);
+          if (msgEl) {
+            const contentDiv = msgEl.querySelector(".content");
+            // Parse markdown for historical messages
+            if (contentDiv) contentDiv.innerHTML = marked.parse(msg.content) as string;
+          }
+        }
+      }
+      // TODO: Handle Tool Calls restoration
+    }
+
+    // Scroll to bottom
+    chatHistory.scrollTop = chatHistory.scrollHeight;
+
+    // Update button state based on loaded history
+    updateNewChatButtonState();
+
+  } catch (e) {
+    console.error("Failed to load history", e);
+    removeMessage(loaderId);
+  }
 }
 
 function loadSettings() {
@@ -163,7 +261,11 @@ function loadSettings() {
 
   if (savedToken && tokenInput) {
     tokenInput.value = savedToken;
+    if (aiService) aiService.close();
     aiService = new AIService(savedToken);
+
+    // Load history after service is initialized
+    loadHistory();
   }
   if (savedApiKey && apiKeyInput) apiKeyInput.value = savedApiKey;
   if (savedQwenApiKey && qwenApiKeyInput) qwenApiKeyInput.value = savedQwenApiKey;
@@ -204,6 +306,7 @@ async function checkSelection() {
 async function handleSend() {
   const prompt = promptInput.value.trim();
   if (!prompt) return;
+  lastUserPrompt = prompt;
 
   if (!aiService) {
     appendMessage("system", "Please set your OpenClaw Gateway Token in settings first.");
@@ -218,6 +321,8 @@ async function handleSend() {
   sendBtn.disabled = true;
 
   // 2. Prepare for AI Processing
+  updateNewChatButtonState(); // Enable New Chat button now that user has interacted
+
   let originalText = "";
   let originalMarkdown = "";
   let hasSelection = false;
@@ -256,74 +361,13 @@ async function handleSend() {
   }
 
   // 4. Call AI (Streaming context-aware)
-  // If we have a selection, pass it. If not, just pass the prompt.
   const aiContext = hasSelection ? originalMarkdown : "";
 
-  // Note: We might want to adjust the system prompt or user prompt structure slightly when there is no context
-  // But for now, passing empty string as context is fine, the AI Service handles the formatting.
-
-  let fullRewrittenText = "";
-  let isFirstChunk = true;
   try {
-    // Clear old content
-    // contentDiv.innerHTML = ""; // DO NOT clear here, as we are appending to existing chat history div structure
-    // But wait, contentDiv IS the message content div created in handleSend. So yes, clear it.
-
-    let mdContainer: HTMLElement | null = null;
-    let accumulatedText = "";
-
-    // Simple Markdown Parser (can be improved or replaced with marked.js later)
-    const parseMarkdown = (text: string) => {
-      let html = text
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>')
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/`(.*?)`/g, '<code>$1</code>')
-        .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>');
-      return html;
-    };
-
-    fullRewrittenText = await aiService.streamRewrite(prompt, aiContext, selectedModelId, (chunk) => {
-      if (!contentDiv) return;
-
-      if (chunk.startsWith("__TOOL_EVENT__:")) {
-        if (isFirstChunk) {
-          contentDiv.innerHTML = ""; // Clear "Thinking..."
-          isFirstChunk = false;
-        }
-        // If we were streaming text, maybe we should stop using the current mdContainer?
-        // For now, let's just insert the tool after whatever content we have.
-
-        const eventData = JSON.parse(chunk.split("__TOOL_EVENT__:")[1]);
-
-        const handled = handleToolEvent(contentDiv, eventData, parseMarkdown);
-        if (handled) {
-          // Tool event handled (call or result)
-          // Prepare state for text coming after this tool
-          mdContainer = null;
-          accumulatedText = "";
-          return;
-        }
-      }
-
-      // Handle Text Chunk
-      if (isFirstChunk) {
-        contentDiv.innerHTML = ""; // Clear "Thinking..."
-        isFirstChunk = false;
-      }
-
-      if (!mdContainer) {
-        mdContainer = document.createElement("div");
-        mdContainer.className = "md-content";
-        contentDiv.appendChild(mdContainer);
-      }
-
-      accumulatedText += chunk;
-      mdContainer.innerHTML = parseMarkdown(accumulatedText);
-      chatHistory.scrollTop = chatHistory.scrollHeight;
-
-    });
-    // Stream finished. No auto-apply to Word.
+    if (contentDiv) {
+      const handler = createStreamHandler(contentDiv, chatHistory);
+      await aiService!.streamRewrite(prompt, aiContext, selectedModelId, handler);
+    }
   } catch (error: any) {
     console.error(error);
     if (contentDiv) {
@@ -334,6 +378,151 @@ async function handleSend() {
   } finally {
     sendBtn.disabled = false;
   }
+}
+
+/**
+ * Recovers from a tool execution by feeding the data back to the AI.
+ */
+async function handleToolOutput(actionName: string, output: string) {
+  const msg = `Original Context/Request: "${lastUserPrompt}"\n\n[System] Tool '${actionName}' executed successfully.\nOutput:\n\`\`\`\n${output}\n\`\`\`\nPlease continue fulfilling the original request using this information.`;
+
+  // Create AI response placeholder for the CONTINUED response
+  const aiMsgId = appendMessage("ai", "");
+  const aiMsgEl = document.getElementById(aiMsgId);
+  let contentDiv: HTMLElement | null = null;
+
+  if (aiMsgEl) {
+    contentDiv = aiMsgEl.querySelector(".content");
+    if (contentDiv) contentDiv.innerHTML = '<span class="typing-indicator">Processing tool output...</span>';
+  }
+
+  try {
+    if (contentDiv) {
+      const handler = createStreamHandler(contentDiv, chatHistory);
+      // We pass empty context because the tool output IS the context
+      await aiService!.streamRewrite(msg, "", selectedModelId, handler);
+    }
+  } catch (e: any) {
+    if (contentDiv) contentDiv.innerHTML += `<br><span style="color:red">Error: ${e.message}</span>`;
+  }
+}
+
+function createStreamHandler(contentDiv: HTMLElement, scrollContainer: HTMLElement) {
+  let isFirstChunk = true;
+  let mdContainer: HTMLElement | null = null;
+  let accumulatedText = "";
+
+  const parseMarkdown = (text: string) => {
+    return marked.parse(text) as string;
+  };
+
+  // Track which tool indices we have already rendered cards for
+  const renderedToolIndices = new Set<number>();
+  // Map index -> real tool_call_id (e.g. 0 -> call_xyz123)
+  const toolIdMap = new Map<number, string>();
+
+  return (chunk: string) => {
+    if (!contentDiv) return;
+
+    if (chunk.startsWith("__TOOL_EVENT__:")) {
+      if (isFirstChunk) {
+        contentDiv.innerHTML = "";
+        isFirstChunk = false;
+      }
+
+      try {
+        const rawPayload = chunk.split("__TOOL_EVENT__:")[1];
+        const eventPayload = JSON.parse(rawPayload);
+        console.log("🔥 [RAW EVENT]", JSON.stringify(eventPayload)); // DEBUG EVERYTHING
+
+        // 1. Resolve Tool Index (if available) to track IDs
+        const toolIndex = typeof eventPayload.index === 'number' ? eventPayload.index : 0;
+
+        // Store real ID -> Index mapping when we see a tool_call
+        if (eventPayload.custom_type === "tool_call" && eventPayload.id && !eventPayload.id.startsWith("chatcmpl")) {
+          toolIdMap.set(toolIndex, eventPayload.id);
+        }
+
+        // 2. Resolve UI Tool ID
+        // Strategy: 
+        // A. If payload has specific tool_call_id, USE IT (This is what we want from backend)
+        // B. If payload has index, look up the map (Standard OpenAI stream behavior)
+        // C. Fallback: use eventPayload.id (which might be chatcmpl_xxx, causing the bug, but we have no choice until backend is fixed)
+
+        let uiToolId = eventPayload.tool_call_id; // Priority 1
+
+        if (!uiToolId) {
+          const mappedId = toolIdMap.get(toolIndex);
+          uiToolId = mappedId || `${eventPayload.id || Date.now()}_${toolIndex}`;
+        }
+
+        console.log(`🛠️ [Tool] Type: ${eventPayload.custom_type}, UI-ID: ${uiToolId}`, eventPayload);
+
+        // Handle Proxy Tools (WORD_PLUGIN_ACTION)
+        const resultObj = eventPayload.result?.details || eventPayload.result;
+        if (eventPayload.custom_type === "tool_result" && resultObj && resultObj.__CLIENT_ACTION__ === "WORD_PLUGIN_ACTION") {
+          const { action, args } = resultObj;
+          const toolDomId = `tool-proxy-${uiToolId}`;
+
+          if (!document.getElementById(toolDomId)) {
+            // Render card
+            contentDiv.insertAdjacentHTML('beforeend', `
+                  <div id="${toolDomId}" class="tool-container searching">
+                     <div class="tool-header">
+                        <span class="icon fa-solid fa-bolt"></span>
+                        <span class="label">Running ${action}...</span>
+                     </div>
+                  </div>
+                `);
+
+            executeClientTool(action, args).then(output => {
+              const el = document.getElementById(toolDomId);
+              if (el) {
+                el.className = "tool-container completed";
+                el.querySelector(".label")!.textContent = `Finished ${action}`;
+              }
+              handleToolOutput(action, output);
+            }).catch(err => {
+              const el = document.getElementById(toolDomId);
+              if (el) {
+                el.className = "tool-container error";
+                el.querySelector(".label")!.textContent = `Failed: ${err.message}`;
+              }
+            });
+          }
+          // Reset text accumulation so subsequent AI text starts fresh
+          mdContainer = null;
+          accumulatedText = "";
+          return;
+        }
+
+        // Handle Standard Tools: we inject our unique UI ID
+        const handled = handleToolEvent(contentDiv, { ...eventPayload, id: uiToolId }, parseMarkdown);
+        if (handled) {
+          mdContainer = null;
+          accumulatedText = "";
+          return;
+        }
+      } catch (e) {
+        console.error("Error parsing tool event", e);
+      }
+    }
+
+    if (isFirstChunk) {
+      contentDiv.innerHTML = "";
+      isFirstChunk = false;
+    }
+
+    if (!mdContainer) {
+      mdContainer = document.createElement("div");
+      mdContainer.className = "md-content";
+      contentDiv.appendChild(mdContainer);
+    }
+
+    accumulatedText += chunk;
+    mdContainer.innerHTML = parseMarkdown(accumulatedText);
+    scrollContainer.scrollTop = scrollContainer.scrollHeight;
+  };
 }
 
 /**

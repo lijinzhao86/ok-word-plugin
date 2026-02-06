@@ -172,12 +172,12 @@ export async function runPreparedReply(
   );
   const groupIntro = shouldInjectGroupIntro
     ? buildGroupIntro({
-        cfg,
-        sessionCtx,
-        sessionEntry,
-        defaultActivation,
-        silentToken: SILENT_REPLY_TOKEN,
-      })
+      cfg,
+      sessionCtx,
+      sessionEntry,
+      defaultActivation,
+      silentToken: SILENT_REPLY_TOKEN,
+    })
     : "";
   const groupSystemPrompt = sessionCtx.GroupSystemPrompt?.trim() ?? "";
   const extraSystemPrompt = [groupIntro, groupSystemPrompt].filter(Boolean).join("\n\n");
@@ -398,6 +398,7 @@ export async function runPreparedReply(
       blockReplyBreak: resolvedBlockStreamingBreak,
       ownerNumbers: command.ownerList.length > 0 ? command.ownerList : undefined,
       extraSystemPrompt: extraSystemPrompt || undefined,
+      reverseRpc: opts?.reverseRpc,
       ...(isReasoningTagProvider(provider) ? { enforceFinalTag: true } : {}),
     },
   };

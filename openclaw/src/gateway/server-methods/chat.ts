@@ -337,10 +337,10 @@ export const chatHandlers: GatewayRequestHandlers = {
               ? a.content
               : ArrayBuffer.isView(a?.content)
                 ? Buffer.from(
-                    a.content.buffer,
-                    a.content.byteOffset,
-                    a.content.byteLength,
-                  ).toString("base64")
+                  a.content.buffer,
+                  a.content.byteOffset,
+                  a.content.byteLength,
+                ).toString("base64")
                 : undefined,
         }))
         .filter((a) => a.content) ?? [];
@@ -517,6 +517,8 @@ export const chatHandlers: GatewayRequestHandlers = {
             prefixContext.modelFull = `${ctx.provider}/${ctx.model}`;
             prefixContext.thinkingLevel = ctx.thinkLevel ?? "off";
           },
+          reverseRpc: (action: string, args: unknown) =>
+            context.invokeClientTool(p.sessionKey, action, args),
         },
       })
         .then(() => {

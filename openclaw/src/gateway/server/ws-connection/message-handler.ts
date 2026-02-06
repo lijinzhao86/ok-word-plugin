@@ -37,6 +37,7 @@ import {
   errorShape,
   formatValidationErrors,
   PROTOCOL_VERSION,
+  type ResponseFrame,
   validateConnectParams,
   validateRequestFrame,
 } from "../../protocol/index.js";
@@ -216,15 +217,15 @@ export function attachGatewayWsMessageHandler(params: {
   if (hasUntrustedProxyHeaders) {
     logWsControl.warn(
       "Proxy headers detected from untrusted address. " +
-        "Connection will not be treated as local. " +
-        "Configure gateway.trustedProxies to restore local client detection behind your proxy.",
+      "Connection will not be treated as local. " +
+      "Configure gateway.trustedProxies to restore local client detection behind your proxy.",
     );
   }
   if (!hostIsLocalish && isLoopbackAddress(remoteAddr) && !hasProxyHeaders) {
     logWsControl.warn(
       "Loopback connection with non-local Host header. " +
-        "Treating it as remote. If you're behind a reverse proxy, " +
-        "set gateway.trustedProxies and forward X-Forwarded-For/X-Real-IP.",
+      "Treating it as remote. If you're behind a reverse proxy, " +
+      "set gateway.trustedProxies and forward X-Forwarded-For/X-Real-IP.",
     );
   }
 
@@ -309,6 +310,7 @@ export function attachGatewayWsMessageHandler(params: {
 
         // protocol negotiation
         const { minProtocol, maxProtocol } = connectParams;
+        logWsControl.info(`negotiating protocol conn=${connId}: client=[${minProtocol}, ${maxProtocol}] server=${PROTOCOL_VERSION}`);
         if (maxProtocol < PROTOCOL_VERSION || minProtocol > PROTOCOL_VERSION) {
           setHandshakeState("failed");
           logWsControl.warn(
@@ -389,11 +391,11 @@ export function attachGatewayWsMessageHandler(params: {
           authResult.method ?? (resolvedAuth.mode === "password" ? "password" : "token");
         const sharedAuthResult = hasSharedAuth
           ? await authorizeGatewayConnect({
-              auth: { ...resolvedAuth, allowTailscale: false },
-              connectAuth: connectParams.auth,
-              req: upgradeReq,
-              trustedProxies,
-            })
+            auth: { ...resolvedAuth, allowTailscale: false },
+            connectAuth: connectParams.auth,
+            req: upgradeReq,
+            trustedProxies,
+          })
           : null;
         const sharedAuthOk =
           sharedAuthResult?.ok === true &&
@@ -831,11 +833,11 @@ export function attachGatewayWsMessageHandler(params: {
           canvasHostUrl,
           auth: deviceToken
             ? {
-                deviceToken: deviceToken.token,
-                role: deviceToken.role,
-                scopes: deviceToken.scopes,
-                issuedAtMs: deviceToken.rotatedAtMs ?? deviceToken.createdAtMs,
-              }
+              deviceToken: deviceToken.token,
+              role: deviceToken.role,
+              scopes: deviceToken.scopes,
+              issuedAtMs: deviceToken.rotatedAtMs ?? deviceToken.createdAtMs,
+            }
             : undefined,
           policy: {
             maxPayload: MAX_PAYLOAD_BYTES,
@@ -850,6 +852,7 @@ export function attachGatewayWsMessageHandler(params: {
           connect: connectParams,
           connId,
           presenceKey,
+          sessionKey: connectParams.sessionKey,
         };
         setClient(nextClient);
         setHandshakeState("connected");
@@ -918,7 +921,16 @@ export function attachGatewayWsMessageHandler(params: {
         return;
       }
 
-      // After handshake, accept only req frames
+      // After handshake, accept req and res frames
+      if (parsed?.type === "res") {
+        const res = parsed as ResponseFrame;
+        logWs("in", "res", { connId, id: res.id, ok: res.ok });
+        const context = buildRequestContext();
+        if (context.handleClientResponse?.(connId, res)) {
+          return;
+        }
+      }
+
       if (!validateRequestFrame(parsed)) {
         send({
           type: "res",

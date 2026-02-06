@@ -74,4 +74,6 @@ export type AgentCommandOpts = {
   extraSystemPrompt?: string;
   /** Per-call stream param overrides (best-effort). */
   streamParams?: AgentStreamParams;
+  /** Reverse RPC function for client-side tool execution. */
+  reverseRpc?: (action: string, args: unknown) => Promise<unknown>;
 };

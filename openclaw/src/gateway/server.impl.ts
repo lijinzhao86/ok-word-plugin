@@ -2,6 +2,8 @@ import type { CanvasHostServer } from "../canvas-host/server.js";
 import type { PluginServicesHandle } from "../plugins/services.js";
 import type { RuntimeEnv } from "../runtime.js";
 import type { startBrowserControlServerIfEnabled } from "./server-browser.js";
+import crypto from "node:crypto";
+import type { ResponseFrame } from "./protocol/index.js";
 import { resolveAgentWorkspaceDir, resolveDefaultAgentId } from "../agents/agent-scope.js";
 import { registerSkillsChangeListener } from "../agents/skills/refresh.js";
 import { initSubagentRegistry } from "../agents/subagent-registry.js";
@@ -313,6 +315,62 @@ export async function startGatewayServer(
     logPlugins,
     getRpcContext,
   });
+
+  const pendingClientRequests = new Map<
+    string,
+    {
+      resolve: (val: any) => void;
+      reject: (err: any) => void;
+      timer: NodeJS.Timeout;
+    }
+  >();
+
+  const invokeClientTool = async (
+    sessionKey: string,
+    action: string,
+    args: unknown,
+  ): Promise<unknown> => {
+    // find client by sessionKey
+    const client = Array.from(clients).find((c) => c.sessionKey === sessionKey);
+    if (!client) {
+      throw new Error(`No active WebSocket connection for session ${sessionKey}`);
+    }
+
+    const requestId = crypto.randomUUID();
+    return new Promise((resolve, reject) => {
+      const timeoutMs = 60_000; // 1 minute timeout for tool execution
+      const timer = setTimeout(() => {
+        pendingClientRequests.delete(requestId);
+        reject(new Error(`Client tool invocation timed out (requestId: ${requestId})`));
+      }, timeoutMs);
+
+      pendingClientRequests.set(requestId, { resolve, reject, timer });
+
+      client.socket.send(
+        JSON.stringify({
+          type: "req",
+          id: requestId,
+          method: "client.tool.invoke",
+          params: { action, args },
+        }),
+      );
+    });
+  };
+
+  const handleClientResponse = (connId: string, response: ResponseFrame): boolean => {
+    const pending = pendingClientRequests.get(response.id);
+    if (!pending) {
+      return false;
+    }
+    clearTimeout(pending.timer);
+    pendingClientRequests.delete(response.id);
+    if (response.ok) {
+      pending.resolve(response.payload);
+    } else {
+      pending.reject(new Error(response.error?.message ?? "Unknown client error"));
+    }
+    return true;
+  };
   let bonjourStop: (() => Promise<void>) | null = null;
   const nodeRegistry = new NodeRegistry();
   const nodePresenceTimers = new Map<string, ReturnType<typeof setInterval>>();
@@ -465,6 +523,8 @@ export async function startGatewayServer(
     markChannelLoggedOut,
     wizardRunner,
     broadcastVoiceWakeChanged,
+    invokeClientTool,
+    handleClientResponse,
   };
 
   const allExtraHandlers: GatewayRequestHandlers = {

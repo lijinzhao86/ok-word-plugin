@@ -63,6 +63,7 @@ export const ConnectParamsSchema = Type.Object(
     ),
     locale: Type.Optional(Type.String()),
     userAgent: Type.Optional(Type.String()),
+    sessionKey: Type.Optional(NonEmptyString),
   },
   { additionalProperties: false },
 );

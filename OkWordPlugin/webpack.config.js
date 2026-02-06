@@ -96,6 +96,7 @@ module.exports = async (env, options) => {
           context: ['/openclaw-api'],
           target: 'http://localhost:18789',
           changeOrigin: true,
+          ws: true,
           pathRewrite: { '^/openclaw-api': '' },
           secure: false,
           onProxyRes: (proxyRes) => {

@@ -39,6 +39,8 @@ export type GetReplyOptions = {
   skillFilter?: string[];
   /** Mutable ref to track if a reply was sent (for Slack "first" threading mode). */
   hasRepliedRef?: { value: boolean };
+  /** Optional RPC for client-side tool execution. */
+  reverseRpc?: (action: string, args: unknown) => Promise<unknown>;
 };
 
 export type ReplyPayload = {

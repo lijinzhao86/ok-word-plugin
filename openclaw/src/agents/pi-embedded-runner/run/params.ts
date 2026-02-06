@@ -95,4 +95,5 @@ export type RunEmbeddedPiAgentParams = {
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
+  reverseRpc?: (action: string, args: unknown) => Promise<unknown>;
 };

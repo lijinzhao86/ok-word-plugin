@@ -369,6 +369,7 @@ export function createGatewayHttpServer(opts: {
         await handleToolsInvokeHttpRequest(req, res, {
           auth: resolvedAuth,
           trustedProxies,
+          getRpcContext,
         })
       ) {
         return;
@@ -395,6 +396,7 @@ export function createGatewayHttpServer(opts: {
           await handleOpenAiHttpRequest(req, res, {
             auth: resolvedAuth,
             trustedProxies,
+            getRpcContext,
           })
         ) {
           return;

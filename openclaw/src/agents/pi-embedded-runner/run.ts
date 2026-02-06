@@ -365,6 +365,7 @@ export async function runEmbeddedPiAgent(
             streamParams: params.streamParams,
             ownerNumbers: params.ownerNumbers,
             enforceFinalTag: params.enforceFinalTag,
+            reverseRpc: params.reverseRpc,
           });
 
           const { aborted, promptError, timedOut, sessionIdUsed, lastAssistant } = attempt;
@@ -598,9 +599,9 @@ export async function runEmbeddedPiAgent(
               const message =
                 (lastAssistant
                   ? formatAssistantErrorText(lastAssistant, {
-                      cfg: params.config,
-                      sessionKey: params.sessionKey ?? params.sessionId,
-                    })
+                    cfg: params.config,
+                    sessionKey: params.sessionKey ?? params.sessionId,
+                  })
                   : undefined) ||
                 lastAssistant?.errorMessage?.trim() ||
                 (timedOut
@@ -671,12 +672,12 @@ export async function runEmbeddedPiAgent(
               stopReason: attempt.clientToolCall ? "tool_calls" : undefined,
               pendingToolCalls: attempt.clientToolCall
                 ? [
-                    {
-                      id: `call_${Date.now()}`,
-                      name: attempt.clientToolCall.name,
-                      arguments: JSON.stringify(attempt.clientToolCall.params),
-                    },
-                  ]
+                  {
+                    id: `call_${Date.now()}`,
+                    name: attempt.clientToolCall.name,
+                    arguments: JSON.stringify(attempt.clientToolCall.params),
+                  },
+                ]
                 : undefined,
             },
             didSendViaMessagingTool: attempt.didSendViaMessagingTool,

@@ -82,6 +82,7 @@ export type EmbeddedRunAttemptParams = {
   streamParams?: AgentStreamParams;
   ownerNumbers?: string[];
   enforceFinalTag?: boolean;
+  reverseRpc?: (action: string, args: unknown) => Promise<unknown>;
 };
 
 export type EmbeddedRunAttemptResult = {

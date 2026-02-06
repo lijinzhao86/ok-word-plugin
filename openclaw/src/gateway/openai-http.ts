@@ -6,6 +6,7 @@ import { agentCommand } from "../commands/agent.js";
 import { emitAgentEvent, onAgentEvent } from "../infra/agent-events.js";
 import { defaultRuntime } from "../runtime.js";
 import { authorizeGatewayConnect, type ResolvedGatewayAuth } from "./auth.js";
+import type { GatewayRequestContext, GatewayRequestHandlers } from "./server-methods/types.js";
 import {
   readJsonBodyOrError,
   sendJson,
@@ -20,6 +21,10 @@ type OpenAiHttpOptions = {
   auth: ResolvedGatewayAuth;
   maxBodyBytes?: number;
   trustedProxies?: string[];
+  getRpcContext?: () => {
+    context: GatewayRequestContext;
+    extraHandlers: GatewayRequestHandlers;
+  } | null;
 };
 
 type OpenAiChatMessage = {
@@ -220,6 +225,10 @@ export async function handleOpenAiHttpRequest(
 
   const runId = `chatcmpl_${randomUUID()}`;
   const deps = createDefaultDeps();
+  const gatewayContext = opts.getRpcContext?.()?.context;
+  const reverseRpc = gatewayContext
+    ? (action: string, args: unknown) => gatewayContext.invokeClientTool(sessionKey, action, args)
+    : undefined;
 
   if (!stream) {
     try {
@@ -232,6 +241,7 @@ export async function handleOpenAiHttpRequest(
           deliver: false,
           messageChannel: "webchat",
           bestEffortDeliver: false,
+          reverseRpc,
         },
         defaultRuntime,
         deps,
@@ -279,6 +289,7 @@ export async function handleOpenAiHttpRequest(
     if (evt.stream === "tool") {
       const phase = evt.data?.phase;
       if (phase === "start") {
+        console.error("!!! BACKEND DEBUG TOOL START:", JSON.stringify(evt.data));
         writeSse(res, {
           id: runId,
           object: "chat.completion.chunk",
@@ -290,6 +301,7 @@ export async function handleOpenAiHttpRequest(
               delta: {
                 custom_type: "tool_call",
                 name: evt.data?.name,
+                id: evt.data?.toolCallId || evt.data?.id,
                 args: evt.data?.args
               }
             }
@@ -307,6 +319,7 @@ export async function handleOpenAiHttpRequest(
               delta: {
                 custom_type: "tool_result",
                 name: evt.data?.name,
+                tool_call_id: evt.data?.toolCallId || evt.data?.id,
                 result: evt.data?.result
               }
             }
@@ -337,6 +350,9 @@ export async function handleOpenAiHttpRequest(
     }
 
     if (evt.stream === "result") {
+      console.error("!!! BACKEND DEBUG: Sending tool_result for:", evt.data?.name);
+      console.error("!!! BACKEND DEBUG: Payload Keys:", Object.keys(evt.data || {}));
+      console.error("!!! BACKEND DEBUG: Looking for toolCallId:", evt.data?.toolCallId, "or id:", evt.data?.id);
       writeSse(res, {
         id: runId,
         object: "chat.completion.chunk",
@@ -348,6 +364,7 @@ export async function handleOpenAiHttpRequest(
             delta: {
               custom_type: "tool_result",
               name: evt.data?.name,
+              tool_call_id: evt.data?.toolCallId || evt.data?.id,
               result: evt.data?.result
             }
           }
@@ -419,6 +436,7 @@ export async function handleOpenAiHttpRequest(
           deliver: false,
           messageChannel: "webchat",
           bestEffortDeliver: false,
+          reverseRpc,
         },
         defaultRuntime,
         deps,

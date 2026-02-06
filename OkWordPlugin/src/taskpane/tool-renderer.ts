@@ -17,11 +17,12 @@ interface ToolConfig {
     verbs: [string, string]; // [Present, Past] e.g. ["Searching", "Searched"]
     renderLabelSuffix: (args: any) => string;
     renderContent: (res: any) => string;
+    clickToExpand?: boolean;
 }
 
 const TOOL_REGISTRY: Record<string, ToolConfig> = {
     web_search: {
-        icon: "icon-globe",
+        icon: "fa-solid fa-globe",
         verbs: ["Searching web for", "Searched web for"],
         renderLabelSuffix: (a) => ` "${a.query || '...'}"`,
         renderContent: (resObj) => {
@@ -45,16 +46,46 @@ const TOOL_REGISTRY: Record<string, ToolConfig> = {
         }
     },
     read_file: {
-        icon: "icon-file",
+        icon: "fa-solid fa-file-code",
         verbs: ["Reading", "Read"],
         renderLabelSuffix: (a) => ` ${a.path || 'file'}`,
         renderContent: (res) => `\`\`\`\n${typeof res === 'string' ? res : (res.content || JSON.stringify(res, null, 2))}\n\`\`\``
     },
     edit_file: {
-        icon: "icon-edit",
+        icon: "fa-solid fa-pen-to-square",
         verbs: ["Editing", "Edited"],
         renderLabelSuffix: (a) => ` ${a.path || 'file'}`,
         renderContent: (res) => typeof res === 'string' ? res : (res.diff ? `Diff:\n${res.diff}` : "Edit applied successfully.")
+    },
+    read_document: {
+        icon: "fa-solid fa-file-lines",
+        verbs: ["Analyzing", "Analyzed"],
+        clickToExpand: false,
+        renderLabelSuffix: (a) => {
+            if (a.scope === 'structure') {
+                return " document structure";
+            }
+            if (a.scope === 'paragraph') {
+                const start = a.offset || 0;
+                const end = start + (a.limit || 50);
+                return ` paragraph #${start}-${end}`;
+            }
+            return " document";
+        },
+        renderContent: (res: any) => {
+            // Unpack nested OpenClaw or Word tool result structures
+            let content = res;
+            if (content?.result) content = content.result;
+            if (content?.content) content = content.content;
+            if (typeof content === 'object') return JSON.stringify(content, null, 2);
+            return `\`\`\`\n${content}\n\`\`\``;
+        }
+    },
+    grep_document: {
+        icon: "fa-solid fa-magnifying-glass",
+        verbs: ["Searching Word document", "Searched Word document"],
+        renderLabelSuffix: (a) => ` for "${a.pattern}"`,
+        renderContent: (res) => `\`\`\`\n${res}\n\`\`\``
     }
 };
 
@@ -83,7 +114,7 @@ export function handleToolEvent(
     const name = eventData.name;
 
     const config = TOOL_REGISTRY[name] || {
-        icon: "icon-globe",
+        icon: "fa-solid fa-cube",
         verbs: [`Using ${name}`, `Used ${name}`],
         renderLabelSuffix: (a: any) => "...",
         renderContent: (res: any) => JSON.stringify(res, null, 2)
@@ -123,18 +154,27 @@ export function handleToolEvent(
                 }
             }
 
-            let resultText = "No results.";
-            try {
-                let resObj = eventData.result;
-                if (typeof resObj === 'string') {
-                    try { resObj = JSON.parse(resObj); } catch (e) { resObj = eventData.result; }
-                }
-                resultText = config.renderContent(resObj);
-            } catch (e) { resultText = "Error: " + String(e); }
+            // Only render content if clickToExpand is not explicitly false
+            if (config.clickToExpand !== false) {
+                let resultText = "No results.";
+                try {
+                    let resObj = eventData.result;
+                    if (typeof resObj === 'string') {
+                        try { resObj = JSON.parse(resObj); } catch (e) { resObj = eventData.result; }
+                    }
+                    resultText = config.renderContent(resObj);
+                } catch (e) { resultText = "Error: " + String(e); }
 
-            if (content) content.innerHTML = parseMarkdown(resultText);
-            if (header) {
-                header.onclick = (e) => { e.stopPropagation(); el.classList.toggle("expanded"); };
+                if (content) content.innerHTML = parseMarkdown(resultText);
+
+                if (header) {
+                    header.style.cursor = "pointer"; // Explicitly show pointer
+                    header.onclick = (e) => { e.stopPropagation(); el.classList.toggle("expanded"); };
+                }
+            } else {
+                // Remove the content container if not expandable to save DOM/memory
+                if (content) content.remove();
+                if (header) header.style.cursor = "default";
             }
         }
         return true;

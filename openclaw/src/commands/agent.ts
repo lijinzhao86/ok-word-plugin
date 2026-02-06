@@ -191,11 +191,11 @@ export async function agentCommand(
     const skillFilter = resolveAgentSkillsFilter(cfg, sessionAgentId);
     const skillsSnapshot = needsSkillsSnapshot
       ? buildWorkspaceSkillSnapshot(workspaceDir, {
-          config: cfg,
-          eligibility: { remote: getRemoteSkillEligibility() },
-          snapshotVersion: skillsSnapshotVersion,
-          skillFilter,
-        })
+        config: cfg,
+        eligibility: { remote: getRemoteSkillEligibility() },
+        snapshotVersion: skillsSnapshotVersion,
+        skillFilter,
+      })
       : sessionEntry?.skillsSnapshot;
 
     if (skillsSnapshot && sessionStore && sessionKey && needsSkillsSnapshot) {
@@ -238,20 +238,20 @@ export async function agentCommand(
     const agentModelPrimary = resolveAgentModelPrimary(cfg, sessionAgentId);
     const cfgForModelSelection = agentModelPrimary
       ? {
-          ...cfg,
-          agents: {
-            ...cfg.agents,
-            defaults: {
-              ...cfg.agents?.defaults,
-              model: {
-                ...(typeof cfg.agents?.defaults?.model === "object"
-                  ? cfg.agents.defaults.model
-                  : undefined),
-                primary: agentModelPrimary,
-              },
+        ...cfg,
+        agents: {
+          ...cfg.agents,
+          defaults: {
+            ...cfg.agents?.defaults,
+            model: {
+              ...(typeof cfg.agents?.defaults?.model === "object"
+                ? cfg.agents.defaults.model
+                : undefined),
+              primary: agentModelPrimary,
             },
           },
-        }
+        },
+      }
       : cfg;
 
     const { provider: defaultProvider, model: defaultModel } = resolveConfiguredModelRef({
@@ -452,6 +452,7 @@ export async function agentCommand(
             extraSystemPrompt: opts.extraSystemPrompt,
             streamParams: opts.streamParams,
             agentDir,
+            reverseRpc: opts.reverseRpc,
             onAgentEvent: (evt) => {
               // Track lifecycle end for fallback emission below.
               if (

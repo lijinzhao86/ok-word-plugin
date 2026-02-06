@@ -78,6 +78,7 @@ export type FollowupRun = {
     ownerNumbers?: string[];
     extraSystemPrompt?: string;
     enforceFinalTag?: boolean;
+    reverseRpc?: (action: string, args: unknown) => Promise<unknown>;
   };
 };
 

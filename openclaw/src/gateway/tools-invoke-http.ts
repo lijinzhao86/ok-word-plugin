@@ -22,6 +22,7 @@ import { getPluginToolMeta } from "../plugins/tools.js";
 import { isSubagentSessionKey } from "../routing/session-key.js";
 import { normalizeMessageChannel } from "../utils/message-channel.js";
 import { authorizeGatewayConnect, type ResolvedGatewayAuth } from "./auth.js";
+import type { GatewayRequestContext, GatewayRequestHandlers } from "./server-methods/types.js";
 import {
   readJsonBodyOrError,
   sendInvalidRequest,
@@ -33,6 +34,16 @@ import { getBearerToken, getHeader } from "./http-utils.js";
 
 const DEFAULT_BODY_BYTES = 2 * 1024 * 1024;
 const MEMORY_TOOL_NAMES = new Set(["memory_search", "memory_get"]);
+
+type ToolsInvokeOptions = {
+  auth: ResolvedGatewayAuth;
+  maxBodyBytes?: number;
+  trustedProxies?: string[];
+  getRpcContext?: () => {
+    context: GatewayRequestContext;
+    extraHandlers: GatewayRequestHandlers;
+  } | null;
+};
 
 type ToolsInvokeBody = {
   tool?: unknown;
@@ -102,7 +113,7 @@ function mergeActionIntoArgsIfSupported(params: {
 export async function handleToolsInvokeHttpRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  opts: { auth: ResolvedGatewayAuth; maxBodyBytes?: number; trustedProxies?: string[] },
+  opts: ToolsInvokeOptions,
 ): Promise<boolean> {
   const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
   if (url.pathname !== "/tools/invoke") {
@@ -211,11 +222,17 @@ export async function handleToolsInvokeHttpRequest(
     : undefined;
 
   // Build tool list (core + plugin tools).
+  const gatewayContext = opts.getRpcContext?.()?.context;
+  const reverseRpc = gatewayContext
+    ? (action: string, args: unknown) => gatewayContext.invokeClientTool(sessionKey, action, args)
+    : undefined;
+
   const allTools = createOpenClawTools({
     agentSessionKey: sessionKey,
     agentChannel: messageChannel ?? undefined,
     agentAccountId: accountId,
     config: cfg,
+    reverseRpc,
     pluginToolAllowlist: collectExplicitAllowlist([
       profilePolicy,
       providerProfilePolicy,
@@ -314,7 +331,9 @@ export async function handleToolsInvokeHttpRequest(
       args,
     });
     // oxlint-disable-next-line typescript/no-explicit-any
-    const result = await (tool as any).execute?.(`http-${Date.now()}`, toolArgs);
+    const result = await (tool as any).execute?.(`http-${Date.now()}`, toolArgs, {
+      reverseRpc,
+    });
     sendJson(res, 200, { ok: true, result });
   } catch (err) {
     sendJson(res, 400, {
